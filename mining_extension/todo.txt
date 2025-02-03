@@ -1,0 +1,17 @@
+What actually needs to be done?
+
+Custom functions:
+- Hash list: scalar, takes a list of colums and returns a single hash of combined values 
+    - Could also use a hash of numeric list (or any?) to allow for different arg types
+- Sum function: aggregate function. Needs to do the usual summing but also:
+    - Needs to return two lists. The first is the valid (non-unique) values for each combination
+    - E.g. if we call sum({a}, {b}, {c}), the output needs to start with ([a1, a2, a2], [b1], [c7, c9]) if a1, a2, ..., c9 are non-unique values
+    - Second output is the actual entropy of each combination H(a), H(b), H(c) for the above input values
+- Filter function, needed for higher layer calls:
+    - Example call filter(A, L1.sets, 0) where L1.sets is the set of valid values from the previous layer caluclation, 0 is the index into those sets, and A is the value to put is the value to search for.
+    - Basically saying, if the column A is found in L1.sets[0] then add {A->1} to the custom sum else add {A->0} or {null} or whatever null handling we have.
+    - Boolean function, can then be chained and added to case when e.g. CASE WHEN filter(A, l1.sets, 0) AND filter(B, l1.sets, 1) THEN {AB->1} ELSE {NULL} END
+
+Call construction:
+- Layer 1 is easy, no filtering needed, simple hash and sum 
+- Later layers are more complicated, generate combinations and their requirements, generate filter clauses for each requirement, then the usual hash and sum

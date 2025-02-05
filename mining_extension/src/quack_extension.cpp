@@ -17,13 +17,71 @@
 #include "sum.cpp"
 #include "sum_no_lift.cpp"
 #include "prune.cpp"
+
 #include "hash_list.cpp"
+#include "sum_dict.cpp"
+#include "filt.cpp"
 
 // OpenSSL linked through vcpkg
 #include <openssl/opensslv.h>
 
 namespace duckdb {
 
+// Funcs for att set and tuple pruning -----------------------------------------
+void registerHashListFunction(DuckDB &db) {
+	auto argTypes = {LogicalType::LIST(LogicalType::VARCHAR)};
+	auto returnType = LogicalType::UBIGINT;
+	auto hashListFunc = ScalarFunction(
+		"hash_list",
+		argTypes,
+		returnType,
+		hashList::hashListFunction
+	);
+	ExtensionUtil::RegisterFunction(*db.instance, hashListFunc);
+}
+
+void registerSumDictFunction(DuckDB &db) {
+	auto argTypes = {LogicalType::LIST(LogicalType::UBIGINT)};
+	duckdb::vector<std::pair<std::string, duckdb::LogicalType>> structTypes;
+    structTypes.push_back(std::make_pair("sets", duckdb::LogicalType::LIST(duckdb::LogicalType::LIST(duckdb::LogicalType::UBIGINT))));
+    structTypes.push_back(std::make_pair("entropies", duckdb::LogicalType::LIST(duckdb::LogicalType::DOUBLE)));
+	auto returnType = duckdb::LogicalType::STRUCT(structTypes);
+
+	auto sumDictFunc = AggregateFunction(
+		"sum_dict",
+		argTypes,
+		returnType,
+		AggregateFunction::StateSize<sumDict::SumDictState>,
+		AggregateFunction::StateInitialize<sumDict::SumDictState, sumDict::SumDictFunction>,
+		sumDict::sumDictUpdate,
+		sumDict::sumDictCombine,
+		sumDict::sumDictFinalize,
+		nullptr,
+		sumDict::sumDictBind,
+		AggregateFunction::StateDestroy<sumDict::SumDictState, sumDict::SumDictFunction>
+	);
+
+	ExtensionUtil::RegisterFunction(*db.instance, sumDictFunc);
+}
+
+void registerFiltFunction(DuckDB &db) {
+	duckdb::vector<LogicalType> argTypes = {
+		LogicalType::UBIGINT, // search hash 
+		LogicalType::LIST(LogicalType::LIST(LogicalType::UBIGINT)), // valid atts (hashed)
+		LogicalType::INTEGER // set offset
+	};
+	auto returnType = LogicalType::BOOLEAN;
+	auto filtFunc = ScalarFunction(
+		"filt",
+		argTypes,
+		returnType,
+		filt::filtFunction
+	);
+	ExtensionUtil::RegisterFunction(*db.instance, filtFunc);
+}
+
+
+// Miscallaneous + previous funcs ----------------------------------------------
 void registerLiftFunction(DuckDB &db) {
 	auto liftFunc = ScalarFunction(
 		"lift",
@@ -35,18 +93,6 @@ void registerLiftFunction(DuckDB &db) {
 		lift::liftFunction
 	);
 	ExtensionUtil::RegisterFunction(*db.instance, liftFunc);
-}
-
-void registerHashListFunction(DuckDB &db) {
-	auto argTypes = {LogicalType::LIST(LogicalType::VARCHAR)};
-	auto returnType = LogicalType::UBIGINT;
-	auto hashListFunc = ScalarFunction(
-		"hash_list",
-		argTypes,
-		returnType,
-		hash_list::hashListFunction
-	);
-	ExtensionUtil::RegisterFunction(*db.instance, hashListFunc);
 }
 
 void registerLiftExactFunction(DuckDB &db) {
@@ -146,13 +192,15 @@ void registerPruneFunction(DuckDB &db) {
 }
 
 void QuackExtension::Load(DuckDB &db) {
-	registerLiftFunction(db);
-	registerLiftExactFunction(db);
-	registerCustomSumFunction(db);
-	registerSumNoLiftFunction(db);
-	registerGetEntropyFunction(db);
-	registerPruneFunction(db);
+	// registerLiftFunction(db);
+	// registerLiftExactFunction(db);
+	// registerCustomSumFunction(db);
+	// registerSumNoLiftFunction(db);
+	// registerGetEntropyFunction(db);
+	// registerPruneFunction(db);
 	registerHashListFunction(db);
+	registerSumDictFunction(db);
+	registerFiltFunction(db);
 }
 
 std::string QuackExtension::Name() {

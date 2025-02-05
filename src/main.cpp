@@ -42,7 +42,7 @@ public:
         loadExtension();
         loadCSV();
 
-        computeEntropies();
+        computeEntropiesPruneTuples();
     }
 
     void loadExtension() {
@@ -73,7 +73,11 @@ public:
         return entropies;
     }
 
-    void computeEntropies() {
+    /*
+        This method prunes entire attribute sets where possible but doesn't 
+        prune individual tuples.
+    */
+    void computeEntropiesPruneSets() {
         std::string computeQry = "SELECT prune(custom_sum(lift_exact([";
         for (int i = 0; i < attributeCount; i++) {
             computeQry += "col" + std::to_string(i);
@@ -92,11 +96,19 @@ public:
             hasResults = entryCount > 0;
         }
     }
+
+    /*
+        This method computes entropies for all sets (unless no n-sets are found)
+        but prunes individual tuples at each stage.
+    */
+    void computeEntropiesPruneTuples() {
+        conn.Query("SELECT hash_list(['hello', 'world']) ;")->Print();
+    }
 };
 
 int main() {
     auto start = std::chrono::high_resolution_clock::now();
-    SchemaMiner sm("flights.csv", 19);
+    SchemaMiner sm("./dataviz/datasets/flights.csv", 19);
     auto end = std::chrono::high_resolution_clock::now();
 
     auto duration = std::chrono::duration_cast<std::chrono::seconds>(end - start);

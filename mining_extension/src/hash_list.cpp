@@ -4,7 +4,7 @@
 #include <string>
 #include <iostream>
 
-namespace hash_list {
+namespace hashList {
 
 using hash_t = uint64_t;
 
@@ -26,4 +26,4 @@ void hashListFunction(duckdb::DataChunk &args, duckdb::ExpressionState &state, d
     }
 }
 
-} // namespace hash_list
+} // namespace hashList

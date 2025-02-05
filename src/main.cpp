@@ -3,7 +3,6 @@
 #include <iostream>
 #include <string>
 #include <set>
-#include <unordered_set>
 #include <vector>
 #include <map>
 #include <chrono>
@@ -123,23 +122,46 @@ public:
     }
 
     std::vector<std::vector<int>> getSubsets(std::vector<int> attSet) {
-        std::vector<std::vector<int>> subsets(attSet.size());
+        int n = attSet.size();
+        std::vector<std::vector<int>> subsets(n);
         for (int i = 0; i < attSet.size(); i++) {
+            std::vector<int> subset;
             for (int j = 0; j < attSet.size(); j++) {
-                if (i != j) {
-                    subsets[i].push_back(attSet[j]);
+                if (j != i) {
+                    subset.push_back(attSet[j]);
                 }
             }
+            subsets[n - i - 1] = subset;
         }
         return subsets;
+    }
+
+    /*
+        Compute entropies for all 1-sets in a single query and make resulting table
+    */
+    void computeFirstLayer() {
+        std::string qry = "CREATE TABLE l1 AS SELECT sum_dict([\n";
+        for (int i = 0; i < attributeCount; i++) {
+            qry += "\thash_list([col" + std::to_string(i) + "]),\n";
+        }
+        qry.resize(qry.size() - 2); // Remove last comma and newline
+        qry += "]) AS out\nFROM tbl;";
+
+        conn.Query(qry);
+        conn.Query("SELECT * FROM l1;")->Print();
     }
 
     /*
         Compute entropies for all n-sets in a single query.
         Assume that the previous layer query has been executed and stored in the table l[n-1]
         and original relation is stored in tbl.
+
+        Returns 1 if at least one valid n-set is found, 0 otherwise. 
     */
-    void computeSingleLayer(int n) {
+    int computeSingleLayer(int n) {
+        // TODO: Store combinations / previous combinations as class members
+        // avoids regeneration and allows easy saving of entropies
+        // TODO: Save entropies
         auto attSets = getAttributeCombinations(n);
         auto prevAttSets = getAttributeCombinations(n - 1);
 
@@ -180,29 +202,48 @@ public:
         qry.resize(qry.size() - 2); // Remove last comma and newline
 
         qry += "]) AS out\nFROM tbl, l" + std::to_string(n - 1) + ";";
-        std::cout << qry << "\n\n";
+        
+        //std::cout << qry << "\n\n";
+        conn.Query(qry);
+        conn.Query("SELECT * FROM l" + std::to_string(n) + ";")->Print();
 
-        // START: Why are the att. sets being generated in reverse order.
+        // Check for non-zero entropies 
+        auto entropyResult = conn.Query("SELECT out.entropies FROM l" + std::to_string(n) + ";");
+        auto entropyList = entropyResult->GetValue(0, 0);
+        for (const auto& entropy : duckdb::ListValue::GetChildren(entropyList)) {
+            if (entropy.GetValue<int>() != 0) {
+                return 1;
+            }
+        }
+
+        return 0;
     }
 
     /*
-        This method computes entropies for all sets (unless no n-sets are found)
-        but prunes individual tuples at each stage.
+        Compute entropies for all set (unless no n-sets are found) at which point we stop
+        and prune individual tuples at each stage.
     */
     void computeEntropiesWithPruning() {
-        for (int i = 2; i < attributeCount+1; i++) {
-            computeSingleLayer(i);
+        computeFirstLayer();
+
+        int layer = 2;
+        while (layer <= attributeCount) {
+            if (!computeSingleLayer(layer)) {
+                // No valid n-sets found, stop
+                break;
+            }
+            layer++;
         }
     }
 };
 
 int main() {
     auto start = std::chrono::high_resolution_clock::now();
-    SchemaMiner sm("./dataviz/datasets/test.csv", 3);
+    SchemaMiner sm("./dataviz/datasets/small_flights.csv", 19);
     auto end = std::chrono::high_resolution_clock::now();
 
-    auto duration = std::chrono::duration_cast<std::chrono::seconds>(end - start);
-    // std::cout << "Runtime: " << duration.count() << "s\n";
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+    std::cout << "Runtime: " << duration.count() << "ms\n";
 
     return 0;
 }
